@@ -7,5 +7,8 @@ env:
   - name: AI_SEARCH_INDEX
     valueFrom: vector-search-index
 
+  - name: DATABRICKS_MODEL_ENDPOINT
+    valueFrom: serving-endpoint
+
   - name: STREAMLIT_GATHER_USAGE_STATS
     value: 'false'

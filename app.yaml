@@ -1,0 +1,10 @@
+command: ['streamlit', 'run', 'app.py', '--server.address', '0.0.0.0', '--server.port', '${DATABRICKS_APP_PORT}']
+env:
+  - name: ENDPOINT_NAME
+    valueFrom: postgres
+  - name: AI_SEARCH_INDEX
+    valueFrom: vector-search-index
+  - name: DATABRICKS_MODEL_ENDPOINT
+    valueFrom: serving-endpoint
+  - name: STREAMLIT_GATHER_USAGE_STATS
+    value: 'false'

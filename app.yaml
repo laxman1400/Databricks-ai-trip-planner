@@ -4,5 +4,8 @@ env:
   - name: ENDPOINT_NAME
     valueFrom: postgres
 
+  - name: AI_SEARCH_INDEX
+    valueFrom: vector-search-index
+
   - name: STREAMLIT_GATHER_USAGE_STATS
     value: 'false'

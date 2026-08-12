@@ -10,8 +10,8 @@
 import requests
 from pyspark.sql import functions as F, types as T
 
-CATALOG = "main"            # change if needed
-SCHEMA = "trip_planner"     # change if needed
+CATALOG = "workspace"      # change if needed
+SCHEMA = "trip_planner_latest"     # change if needed
 TABLE = f"{CATALOG}.{SCHEMA}.attraction_documents"
 
 DESTINATIONS = ["Seattle", "Denver", "Chicago"]  # add your demo destinations
@@ -24,11 +24,24 @@ WIKI_URL = "https://en.wikipedia.org/w/api.php"
 def geocode(place):
     r = requests.get(
         GEOCODE_URL,
-        params={"name": place, "count": 1, "language": "en", "format": "json"},
+        params={
+            "name": place,
+            "count": 1,
+            "language": "en",
+            "format": "json",
+        },
         timeout=20,
     )
+
     r.raise_for_status()
-    hit = r.json()["results"][0]
+
+    data = r.json()
+
+    if not data.get("results"):
+        raise ValueError(f"No geocoding results found for {place}")
+
+    hit = data["results"][0]
+
     return {
         "destination": hit["name"],
         "country": hit.get("country"),
@@ -38,8 +51,12 @@ def geocode(place):
     }
 
 
-def wikimedia_nearby(lat, lon, destination, radius=20000, limit=50):
-    headers = {"User-Agent": "TrailWiseAI-EducationalCapstone/1.0"}
+def wikimedia_nearby(lat, lon, destination, radius=10000, limit=50):
+
+    headers = {
+        "User-Agent": "TrailWiseAI-EducationalCapstone/1.0"
+    }
+
     geo = requests.get(
         WIKI_URL,
         params={
@@ -53,12 +70,32 @@ def wikimedia_nearby(lat, lon, destination, radius=20000, limit=50):
         headers=headers,
         timeout=20,
     )
+
     geo.raise_for_status()
-    hits = geo.json().get("query", {}).get("geosearch", [])
+
+    geo_data = geo.json()
+
+    # Catch Wikimedia API errors
+    if "error" in geo_data:
+        raise RuntimeError(
+            f"Wikimedia API error: {geo_data['error']}"
+        )
+
+    hits = geo_data.get("query", {}).get("geosearch", [])
+
+    print(
+        f"{destination}: Wikimedia returned "
+        f"{len(hits)} nearby pages"
+    )
+
     if not hits:
         return []
 
-    ids = "|".join(str(x["pageid"]) for x in hits)
+    ids = "|".join(
+        str(x["pageid"])
+        for x in hits
+    )
+
     details = requests.get(
         WIKI_URL,
         params={
@@ -73,15 +110,41 @@ def wikimedia_nearby(lat, lon, destination, radius=20000, limit=50):
         headers=headers,
         timeout=20,
     )
+
     details.raise_for_status()
 
-    by_id = {str(x["pageid"]): x for x in hits}
+    details_data = details.json()
+
+    if "error" in details_data:
+        raise RuntimeError(
+            f"Wikimedia details API error: "
+            f"{details_data['error']}"
+        )
+
+    by_id = {
+        str(x["pageid"]): x
+        for x in hits
+    }
+
     rows = []
-    for pageid, page in details.json().get("query", {}).get("pages", {}).items():
+
+    for pageid, page in (
+        details_data
+        .get("query", {})
+        .get("pages", {})
+        .items()
+    ):
+
         hit = by_id.get(str(pageid), {})
-        text = (page.get("extract") or "").strip()
+
+        text = (
+            page.get("extract") or ""
+        ).strip()
+
+        # Ignore pages with little/no useful text
         if len(text) < 80:
             continue
+
         rows.append(
             {
                 "document_id": f"wikimedia:{pageid}",
@@ -95,6 +158,12 @@ def wikimedia_nearby(lat, lon, destination, radius=20000, limit=50):
                 "source_type": "wikimedia",
             }
         )
+
+    print(
+        f"{destination}: {len(rows)} usable documents "
+        f"after filtering"
+    )
+
     return rows
 
 # COMMAND ----------
